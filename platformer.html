@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Mario Clone</title>
+	<!--jQuery Library-->
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+	<!--Bootstrap-->
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+<style>
+	body {
+		text-align: center;
+		background-color: #FFAAAA;
+	}
+	#header {
+		background-color: red;
+		color: white;
+		font-weight: bold;
+		font-size: 3em;
+		margin: 10px auto;
+		width: 70%;
+		border: 4px solid white;
+		border-radius: 30px;
+	}
+	canvas {
+		border: 1px solid black;
+	}
+	audio {
+		display: none;
+	}
+	#lvl {
+		display: inline-block;
+		margin-right:15px;
+		font-weight: bold;
+	}
+	p {
+		margin: 1px;
+	}
+</style>
+</head>
+<body>
+	<div id="header">NOT Mario!</div>
+	<canvas width=500 height=500></canvas><br>
+	<div id="lvl">Level 1</div><button id="startBtn">Start Game!</button>
+	<br><br><p>Arrow keys to move! - Spacebar to jump!</p>
+	<p>Only supported on Google Chrome!</p>
+	<audio id="jumpSFX" preload="auto" controls="none" src="http://themushroomkingdom.net/sounds/wav/smb/smb_jump-small.wav"></audio>
+	<audio id="failSFX" preload="auto" controls="none" src="http://themushroomkingdom.net/sounds/wav/smb/smb_mariodie.wav"></audio>
+	<audio id="winSFX" preload="auto" controls="none" src="http://themushroomkingdom.net/sounds/wav/smb/smb_stage_clear.wav"></audio>
+
+<script>
+$(document).ready(function(){
+
+	var playerToken, platforms, refreshRate, gravity, goalX;
+	var levels = {
+		lvl1: {
+			platforms: [
+				//new Graphic(0,-100,40,40,"orange"),
+				new Graphic(0,300,200,40,"brown"),
+				new Graphic(280,300,360,40,"brown"),
+				new Graphic(380,260,260,40,"brown"),
+				new Graphic(460,220,180,40,"brown"),
+				new Graphic(540,180,100,40,"brown"),
+				new Graphic(760,300,140,40,"brown"),
+				new Graphic(940,260,100,40,"brown"),
+				new Graphic(1080,220,100,40,"brown"),
+				new Graphic(1280,300,220,40,"brown")
+			],
+			goal: -1300
+		},
+		lvl2: {
+			platforms: [
+				new Graphic(0,360,240,20,"brown"),
+				new Graphic(320,360,100,20,"brown"),
+				new Graphic(440,320,100,20,"brown"),
+				new Graphic(580,280,100,20,"brown"),
+				new Graphic(720,220,100,20,"brown"),
+				new Graphic(580,160,100,20,"brown"),
+				new Graphic(720,100,180,20,"brown"),
+				new Graphic(1000,180,140,20,"brown"),
+				new Graphic(1260,300,240,20,"brown")
+			],
+			goal: -1340
+		}
+	};
+	var numLevels = Object.keys(levels).length;
+	
+	function startGame() {
+		$("#startBtn").attr("disabled",true);
+		$("#startBtn").text("-------");
+		playerToken = new Graphic(100,200,20,40,"green");
+		picGraphic(playerToken,"http://martindrapeau.github.io/backbone-game-engine/docs/super-mario-sprite.png",0,0,30,60);
+		gameBackground1 = new Graphic(0,0,gameArea.canvas.width,gameArea.canvas.height,"yellow");
+		picGraphic(gameBackground1,"http://mario5.florian-rappl.de/Content/backgrounds/02.png",0,270,500,500);
+		gameBackground2 = new Graphic(-1*gameArea.canvas.width,0,gameArea.canvas.width,gameArea.canvas.height,"yellow");
+		picGraphic(gameBackground2,"http://mario5.florian-rappl.de/Content/backgrounds/02.png",1024-gameArea.canvas.width,270,500,500);
+		platforms = cloneListOfObjects(levels["lvl"+gameArea.level].platforms);
+		//platforms = cloneListOfObjects(levels["lvl"+2].platforms); //LVL CHEAT
+		platforms.unshift(new Graphic(0,-100,40,40,"orange"));
+		refreshRate = 10;
+		gravity = 0.05;
+		goalX = levels["lvl"+gameArea.level].goal;
+		gameArea.start();
+	}
+
+	function cloneListOfObjects (list) {
+		var cloneList = [];
+		for (var i=0; i<list.length; i++) {
+			var tempObj = {};
+			for (var key in list[i]) {
+				tempObj[key] = list[i][key];
+			}
+			cloneList.push(tempObj);
+		}
+		return cloneList;
+	}
+
+	function picGraphic(obj,url,spriteX,cropY,cropW,cropH) {
+		obj.spriteX = spriteX;
+		obj.image = new Image();
+		obj.image.src = url;
+		obj.cropY = cropY;
+		obj.cropW = cropW;
+		obj.cropH = cropH;
+		obj.update = function() {
+			this.x += this.speedX;
+			this.y += this.speedY;
+			gameArea.context.drawImage(this.image,this.spriteX,this.cropY,this.cropW,this.cropH,this.x,this.y,this.width,this.height);
+		};
+	}
+
+	function Graphic(x,y,width,height,color) {
+		this.x = x;
+		this.y = y;
+		this.speedX = 0;
+		this.speedY = 0;
+		this.bounce = 0.3;
+		this.width = width;
+		this.height = height;
+		this.color = color;
+		this.update = function() {
+			this.x += this.speedX;
+			this.y += this.speedY;
+			gameArea.context.fillStyle = this.color;
+			gameArea.context.fillRect(this.x,this.y,this.width,this.height);
+		};
+		this.detectBottom = function(platform) {
+			if (this.y+this.height+1<platform.y ||
+				this.y+this.height>platform.y+platform.height ||
+				this.x > platform.x+platform.width ||
+				this.x+this.width < platform.x) {
+				return false;
+			} else return true;
+		};
+		this.detectLeft = function(platform) {
+			if (this.x !== platform.x+platform.width ||
+				this.y > platform.y+platform.height ||
+				this.y+this.height < platform.y) {
+				return false;
+			} else return true;
+		};
+		this.detectRight = function(platform) {
+			if (this.x+this.width !== platform.x ||
+				this.y > platform.y+platform.height ||
+				this.y+this.height < platform.y) {
+				return false;
+			} else return true;
+		};
+		this.detect = function(platform) {
+			if (this.x > platform.x+platform.width ||
+				this.x+this.width < platform.x ||
+				this.y > platform.y+platform.height ||
+				this.y+this.height < platform.y) {
+				return false;
+			} else return true;
+		};
+	}
+
+	function updateBackground() {
+		gameBackground1.update();
+		var canvasW = gameArea.canvas.width;
+		if (gameBackground1.spriteX<0) {
+			gameBackground2.spriteX = 1024-canvasW;
+			gameBackground2.x = 0-canvasW-gameBackground1.spriteX;
+			gameBackground2.update();
+			if (gameBackground2.x>=0) gameBackground1.spriteX = 1024-canvasW;
+		} else if (gameBackground1.spriteX>1024-canvasW) {
+			gameBackground2.spriteX = 0
+			gameBackground2.x = 1024-gameBackground1.spriteX;
+			gameBackground2.update();
+			if (gameBackground2.x<=0) gameBackground1.spriteX = 0;
+		}
+	}
+
+	function updateGame() {
+		var screenPan;
+		gameArea.frameCount += refreshRate;
+		gameArea.clear();
+		updateBackground();
+		playerToken.speedY += gravity;
+		playerToken.spriteX = 5*32;
+		if (platforms.some(function(platform){return playerToken.detectLeft(platform);})) {
+			screenPan = -1;
+		} else if (platforms.some(function(platform){return playerToken.detectRight(platform);})) {
+			screenPan = 1;
+		} else {
+			screenPan = 0;
+		}
+		if (!screenPan && gameArea.keyStrokes[37]) {
+			if (gameArea.frameCount%60===0) gameBackground1.spriteX -= 1;
+		}
+		if (!screenPan && gameArea.keyStrokes[39]) {
+			if (gameArea.frameCount%60===0) gameBackground1.spriteX += 1;
+		} 
+		platforms.forEach(function(platform){
+			platform.x += screenPan;
+			if (playerToken.detectBottom(platform)) {
+				playerToken.y = platform.y-playerToken.height;
+				playerToken.speedY = Math.ceil(10*-1*playerToken.speedY*playerToken.bounce)/10;
+				if (gameArea.keyStrokes[32]) {
+					playerToken.speedY -= 2.5;
+					$("audio#jumpSFX").trigger("play");
+				}
+				playerToken.spriteX = 0;
+			}
+			platform.speedX = 0;
+			//platform.speedY = 0;
+			if (gameArea.keyStrokes[37]) platform.speedX += 1;
+			if (gameArea.keyStrokes[39]) platform.speedX += -1;
+			if (platform.speedX && !playerToken.speedY) playerToken.spriteX = (Math.floor(gameArea.frameCount/60)%3+1)*32;
+			if (screenPan && !playerToken.speedY) playerToken.spriteX = 4*32;
+			platform.update();
+		});
+		playerToken.update();
+		if (platforms[0].x < goalX) gameArea.endWin();
+		if (playerToken.y+playerToken.height > gameArea.height) gameArea.endFail();
+	}
+
+	var gameArea = {
+		canvas: document.querySelector("canvas"),
+		width: $("canvas").attr("width"),
+		height: $("canvas").attr("height"),
+		frameCount: 0,
+		keyStrokes: [],
+		level: 1,
+		start: function() {
+			this.context = this.canvas.getContext("2d");
+			this.interval = setInterval(updateGame,refreshRate);
+			$("#lvl").text("Level "+gameArea.level);
+			$(document).keydown(function(e){
+				gameArea.keyStrokes[e.keyCode]=true;
+			});
+			$(document).keyup(function(e){
+				gameArea.keyStrokes[e.keyCode]=false;
+			});
+		},
+		clear: function() {
+			this.context.clearRect(0,0,this.canvas.width,this.canvas.height);
+		},
+		endFail: function() {
+			clearInterval(this.interval);
+			$("audio#failSFX").trigger("play");
+			this.context.font = "30px Arial";
+			this.context.fillStyle = "red";
+			this.context.textAlign = "center";
+			this.context.fillText("Try Again...",this.canvas.width/2,100);
+			$("#startBtn").attr("disabled",false);
+			$("#startBtn").focus();
+			$("#startBtn").text("Play Again!");
+			this.level = 1;
+		},
+		endWin: function() {
+			clearInterval(this.interval);
+			$("audio#winSFX").trigger("play");
+			this.context.font = "30px Arial";
+			this.context.fillStyle = "green";
+			this.context.textAlign = "center";
+			$("#startBtn").attr("disabled",false);
+			$("#startBtn").focus();
+			if (this.level>=numLevels){
+				this.context.fillText("YOU CLEARED THE GAME!!!!!",this.canvas.width/2,100);
+				$("#startBtn").text("Play Again!");
+				this.level = 1;
+			} else {
+				this.context.fillText("Level Complete!!!",this.canvas.width/2,100);
+				$("#startBtn").text("Next Level!");
+				this.level += 1;
+			}
+		}
+	};
+
+	$("#startBtn").click(startGame);
+
+});
+</script>
+
+</body>
+</html>
